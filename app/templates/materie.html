@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2 class="mb-4">Gestione Materie</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white">
+            Aggiungi Materia
+        </div>
+
+        <div class="card-body">
+            <form method="POST">
+                <div class="row">
+
+                    <div class="col-md-6">
+                        <input type="text" name="nome" class="form-control"
+                               placeholder="Nome materia (es: Matematica)" required>
+                    </div>
+
+                    <div class="col-md-3">
+                        <input type="color" name="colore" class="form-control form-control-color"
+                               value="#007bff">
+                    </div>
+
+                    <div class="col-md-3">
+                        <button class="btn btn-info w-100">Aggiungi</button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <h4>Materie Inserite</h4>
+
+    <table class="table table-bordered mt-3">
+        <thead class="table-light">
+            <tr>
+                <th>Materia</th>
+                <th>Colore</th>
+                <th>Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in materie %}
+            <tr>
+                <td>{{ m.nome }}</td>
+                <td>
+                    <div style="width:30px; height:30px; background:{{ m.colore }}; border-radius:4px;"></div>
+                </td>
+                <td>
+                    <a href="{{ url_for('materie.delete_materia', id=m.id) }}"
+                       class="btn btn-danger btn-sm">Elimina</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+{% endblock %}

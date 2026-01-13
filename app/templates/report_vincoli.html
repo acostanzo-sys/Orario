@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <h2 class="mb-4">Report Vincoli – Ore non piazzate</h2>
+
+    <p class="text-muted">
+        Questo report mostra, per ogni classe, quante ore annuali non è stato possibile piazzare
+        rispettando i vincoli (docenti, giorni fissi, stage, giorni speciali, blocchi minimi).
+    </p>
+
+    {% if not report %}
+        <div class="alert alert-info">
+            Nessun dato disponibile. Genera prima il calendario.
+        </div>
+    {% else %}
+
+        {% for classe_id, dati in report.items() %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                {{ dati.nome_classe }}
+            </div>
+            <div class="card-body">
+
+                {% if dati.report|length == 0 %}
+                    <div class="alert alert-success">
+                        Tutte le ore sono state piazzate correttamente.
+                    </div>
+                {% else %}
+                    <table class="table table-bordered text-center align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Materia</th>
+                                <th>Docente</th>
+                                <th>Ore annuali</th>
+                                <th>Ore piazzate</th>
+                                <th>Ore non piazzate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in dati.report %}
+                            <tr>
+                                <td><strong>{{ r.materia }}</strong></td>
+                                <td>{{ r.docente }}</td>
+                                <td>{{ r.ore_annuali }}</td>
+                                <td>{{ r.piazzate }}</td>
+                                <td class="text-danger fw-bold">{{ r.non_piazzate }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% endif %}
+
+            </div>
+        </div>
+        {% endfor %}
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

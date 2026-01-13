@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="container mt-4">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Genera Calendario Scolastico</h2>
+
+        <div>
+            <a href="{{ url_for('orario.export_xls') }}" class="btn btn-success">
+                Scarica calendario annuale in XLS
+            </a>
+
+            <a href="{{ url_for('orario.report_vincoli') }}" class="btn btn-warning ms-2">
+                Report Vincoli
+            </a>
+        </div>
+    </div>
+
+    <p class="text-muted">
+        Anteprima della <strong>prima settimana reale</strong> generata per ogni classe.
+    </p>
+
+    {% if not anteprima %}
+        <div class="alert alert-warning">
+            Nessun anno formativo configurato o nessuna classe trovata.
+        </div>
+    {% else %}
+
+        {% for classe_id, dati in anteprima.items() %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                Calendario – {{ dati.nome_classe }}
+            </div>
+
+            <div class="card-body">
+
+                <table class="table table-bordered text-center align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ora</th>
+                            {% for giorno in dati.settimana %}
+                                <th>
+                                    {{ giorno.giorno_settimana }}<br>
+                                    <span class="text-muted small">
+                                        {{ giorno.data.strftime("%d/%m/%Y") }}
+                                    </span>
+                                </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for idx in range(dati.ore_giornaliere) %}
+                        <tr>
+                            <td><strong>{{ dati.settimana[0].lezioni[idx].ora.strftime("%H:%M") }}</strong></td>
+
+                            {% for giorno in dati.settimana %}
+                                {% set lezione = giorno.lezioni[idx] %}
+                                <td>
+                                    {% if lezione.materia %}
+                                        <div><strong>{{ lezione.materia }}</strong></div>
+                                        {% if lezione.docente %}
+                                            <div class="text-muted small">{{ lezione.docente }}</div>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+
+                </table>
+
+            </div>
+        </div>
+        {% endfor %}
+
+    {% endif %}
+
+</div>
+
+{% endblock %}

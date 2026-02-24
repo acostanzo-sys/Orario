@@ -7,7 +7,17 @@ materie_bp = Blueprint("materie", __name__, url_prefix="/materie")
 def lista_materie():
     materie = Materia.query.order_by(Materia.nome).all()
 
-    if request.method == "POST":
+    # 🔥 Se clicco SALVA (aggiornamento multiplo)
+    if request.method == "POST" and "salva_modifiche" in request.form:
+        for m in materie:
+            flag = request.form.get(f"prof_{m.id}")
+            m.is_professionale = (flag == "on")
+        db.session.commit()
+        flash("Modifiche salvate!", "success")
+        return redirect(url_for("materie.lista_materie"))
+
+    # 🔥 Se aggiungo una nuova materia
+    if request.method == "POST" and "nome" in request.form:
         nome = request.form.get("nome")
         colore = request.form.get("colore") or "#007bff"
 

@@ -5,13 +5,31 @@ class Classe(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome_classe = db.Column(db.String(50), nullable=False, unique=True)
 
+    # Date personalizzate per la classe
+    data_inizio = db.Column(db.Date, nullable=True)
+    data_fine = db.Column(db.Date, nullable=True)
+
+    # Ore giornaliere e giorni di lezione
     ore_massime_giornaliere = db.Column(db.Integer, default=6)
-    giorni_lezione = db.Column(db.String(50), default="lun,mar,mer,gio,ven")
+    giorni_lezione = db.Column(db.String(100), default="Lunedì,Martedì,Mercoledì,Giovedì,Venrdì")
 
-    # Relazione corretta (nessun conflitto)
-    materie_assegnate = db.relationship("MateriaClasse", backref="classe", cascade="all, delete-orphan")
+    # 🔥 NUOVO: associazione con un’altra classe
+    classe_associata_id = db.Column(db.Integer, db.ForeignKey("classe.id"), nullable=True)
+    classe_associata = db.relationship("Classe", remote_side=[id])
 
-    calendario = db.relationship("CalendarioClasse", backref="classe", uselist=False, cascade="all, delete-orphan")
+    # Relazioni
+    materie_assegnate = db.relationship(
+        "MateriaClasse",
+        backref="classe",
+        cascade="all, delete-orphan"
+    )
+
+    calendario = db.relationship(
+        "CalendarioClasse",
+        backref="classe",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
 
 
 class Docente(db.Model):
@@ -24,21 +42,16 @@ class Docente(db.Model):
 class MateriaClasse(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
-    # Collegamento alla classe
     classe_id = db.Column(db.Integer, db.ForeignKey("classe.id"), nullable=False)
 
-    # Collegamento alla materia
     materia_id = db.Column(db.Integer, db.ForeignKey("materia.id"), nullable=False)
     materia = db.relationship("Materia")
 
-    # Ore annuali (nuovo campo)
     ore_annuali = db.Column(db.Integer, nullable=False)
 
-    # Docente assegnato
     docente_id = db.Column(db.Integer, db.ForeignKey("docente.id"), nullable=False)
     docente = db.relationship("Docente")
 
-    # Ore minime consecutive richieste
     ore_minime_consecutive = db.Column(db.Integer, nullable=False, default=1)
 
 
@@ -59,16 +72,6 @@ class CalendarioClasse(db.Model):
     data_fine = db.Column(db.Date, nullable=False)
 
 
-class Stage(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    classe_id = db.Column(db.Integer, db.ForeignKey("classe.id"), nullable=False)
-
-    periodo_stage_1_da = db.Column(db.Date)
-    periodo_stage_1_a = db.Column(db.Date)
-    periodo_stage_2_da = db.Column(db.Date)
-    periodo_stage_2_a = db.Column(db.Date)
-
-    classe = db.relationship("Classe")
 
 
 
@@ -109,7 +112,9 @@ class GiornoSpeciale(db.Model):
     data = db.Column(db.Date, nullable=False)
     materia = db.Column(db.String(100), nullable=False)
     ore = db.Column(db.Integer, nullable=False)
-    docente = db.Column(db.String(100), nullable=True)
+
+    docente_id = db.Column(db.Integer, db.ForeignKey("docente.id"), nullable=True)
+    docente = db.relationship("Docente")
 
     classe = db.relationship("Classe", backref="giorni_speciali")
 
@@ -118,6 +123,8 @@ class Materia(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, unique=True)
     colore = db.Column(db.String(20), default="#007bff")
+    is_professionale = db.Column(db.Boolean, default=False)
+
 
 class DisponibilitaAnnua(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -134,9 +141,26 @@ class GiornoFisso(db.Model):
 
     classe_id = db.Column(db.Integer, db.ForeignKey("classe.id"), nullable=False)
     materia_id = db.Column(db.Integer, db.ForeignKey("materia.id"), nullable=False)
+    docente_id = db.Column(db.Integer, db.ForeignKey("docente.id"), nullable=False)
 
-    giorno = db.Column(db.String(10), nullable=False)  # lun, mar, mer, gio, ven, sab
+    giorno = db.Column(db.String(10), nullable=False)
     ore = db.Column(db.Integer, nullable=False, default=1)
 
     classe = db.relationship("Classe")
     materia = db.relationship("Materia")
+    docente = db.relationship("Docente")
+
+
+class Stage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    classe_id = db.Column(db.Integer, db.ForeignKey("classe.id"), nullable=False)
+
+    periodo_stage_1_da = db.Column(db.Date)
+    periodo_stage_1_a = db.Column(db.Date)
+    periodo_stage_2_da = db.Column(db.Date)
+    periodo_stage_2_a = db.Column(db.Date)
+
+    # 🔥 nuovo campo
+    giorni_stage = db.Column(db.String(50), default="Lunedì,Martedì,Mercoledì,Giovedì,Venerdì")
+
+    classe = db.relationship("Classe")

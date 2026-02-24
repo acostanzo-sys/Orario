@@ -4,6 +4,16 @@ from datetime import datetime
 
 anni_bp = Blueprint("anni", __name__, url_prefix="/anni")
 
+GIORNI_COMPLETI = {
+    "lun": "Lunedì",
+    "mar": "Martedì",
+    "mer": "Mercoledì",
+    "gio": "Giovedì",
+    "ven": "Venerdì",
+    "sab": "Sabato",
+    "dom": "Domenica",
+}
+
 
 @anni_bp.route("/", methods=["GET", "POST"])
 def gestione_anno():
@@ -52,15 +62,25 @@ def gestione_anno():
         # ---------------------------------------------------------
         for classe in classi:
 
-            # Se i campi della classe sono vuoti → usa le date generali
+            # Date specifiche della classe (o fallback alle generali)
             data_i_raw = request.form.get(f"classe_{classe.id}_inizio") or data_inizio_raw
             data_f_raw = request.form.get(f"classe_{classe.id}_fine") or data_fine_raw
 
             data_i = datetime.strptime(data_i_raw, "%Y-%m-%d").date()
             data_f = datetime.strptime(data_f_raw, "%Y-%m-%d").date()
 
+            # Ore massime giornaliere
             ore_max = int(request.form.get(f"classe_{classe.id}_ore"))
-            giorni = ",".join(request.form.getlist(f"classe_{classe.id}_giorni"))
+
+            # Giorni selezionati (checkbox)
+            giorni_selezionati = request.form.getlist(f"classe_{classe.id}_giorni")
+            giorni_completi = [GIORNI_COMPLETI[g] for g in giorni_selezionati]
+            classe.giorni_lezione = ",".join(giorni_completi)
+
+            # Salva date anche nel modello Classe
+            classe.data_inizio = data_i
+            classe.data_fine = data_f
+            classe.ore_massime_giornaliere = ore_max
 
             # --- Calendario classe ---
             calendario = CalendarioClasse.query.filter_by(classe_id=classe.id).first()
@@ -74,10 +94,6 @@ def gestione_anno():
                     data_fine=data_f
                 ))
 
-            # --- Impostazioni classe ---
-            classe.ore_massime_giornaliere = ore_max
-            classe.giorni_lezione = giorni
-
         db.session.commit()
         flash("Anno formativo e calendari classe salvati!", "success")
         return redirect(url_for("anni.gestione_anno"))
@@ -85,9 +101,49 @@ def gestione_anno():
     # ---------------------------------------------------------
     # GET: PREPARA I CALENDARI PER LA PAGINA
     # ---------------------------------------------------------
-    calendari = {}
-    for classe in classi:
-        cal = CalendarioClasse.query.filter_by(classe_id=classe.id).first()
-        calendari[classe.id] = cal
+    calendari = {
+        classe.id: CalendarioClasse.query.filter_by(classe_id=classe.id).first()
+        for classe in classi
+    }
 
     return render_template("anni.html", anno=anno, classi=classi, calendari=calendari)
+
+
+# ---------------------------------------------------------
+# RESET COMPLETO ANNO FORMATIVO
+# ---------------------------------------------------------
+@anni_bp.route("/reset", methods=["POST"])
+def reset_anno():
+
+    AnnoFormativo.query.delete()
+    CalendarioClasse.query.delete()
+
+    for c in Classe.query.all():
+        c.data_inizio = None
+        c.data_fine = None
+        c.giorni_lezione = None
+        c.ore_massime_giornaliere = None
+
+    db.session.commit()
+    flash("Dati dell'anno formativo e delle classi resettati con successo.", "warning")
+    return redirect(url_for("anni.gestione_anno"))
+
+
+# ---------------------------------------------------------
+# RESET SINGOLA CLASSE
+# ---------------------------------------------------------
+@anni_bp.route("/reset_classe/<int:classe_id>", methods=["POST"])
+def reset_classe(classe_id):
+
+    classe = Classe.query.get_or_404(classe_id)
+
+    classe.data_inizio = None
+    classe.data_fine = None
+    classe.giorni_lezione = None
+    classe.ore_massime_giornaliere = None
+
+    CalendarioClasse.query.filter_by(classe_id=classe_id).delete()
+
+    db.session.commit()
+    flash(f"Dati della classe {classe.nome_classe} resettati.", "warning")
+    return redirect(url_for("anni.gestione_anno"))

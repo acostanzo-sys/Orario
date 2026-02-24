@@ -11,6 +11,11 @@
         </a>
     </div>
 
+    <!-- 🔥 TOTALE ORE ANNUALI -->
+    <div class="alert alert-info">
+        <strong>Totale ore annuali inserite:</strong> {{ totale_ore }}
+    </div>
+
     <!-- FORM AGGIUNTA MATERIA ALLA CLASSE -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-success text-white">
@@ -53,8 +58,8 @@
                     <!-- ORE MINIME CONSECUTIVE -->
                     <div class="col-md-2">
                         <label class="form-label">Ore minime consecutive</label>
-                        <input type="number" name="ore_minime_consecutive" class="form-control"min="1" max="{{ classe.ore_massime_giornaliere }}" value="1"required>
-
+                        <input type="number" name="ore_minime_consecutive" class="form-control"
+                               min="1" max="{{ classe.ore_massime_giornaliere }}" value="1" required>
                     </div>
 
                 </div>
@@ -64,39 +69,70 @@
         </div>
     </div>
 
-    <!-- ELENCO MATERIE DELLA CLASSE -->
+    <!-- 🔥 FORM MODIFICA MATERIE ESISTENTI -->
     <h4>Materie Assegnate</h4>
 
-    <table class="table table-bordered mt-3">
-        <thead class="table-light">
-            <tr>
-                <th>Materia</th>
-                <th>Docente</th>
-                <th>Ore annuali</th>
-                <th>Minime consecutive</th>
-                <th>Colore</th>
-                <th>Azioni</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for mc in materie_classe %}
-            <tr>
-                <td>{{ mc.materia.nome }}</td>
-                <td>{{ mc.docente.nome_docente }}</td>
-                <td>{{ mc.ore_annuali }}</td>
-                <td>{{ mc.ore_minime_consecutive }}</td>
-                <td>
-                    <div style="width:30px; height:30px; background:{{ mc.materia.colore }}; border-radius:4px;"></div>
-                </td>
-                <td>
-                    <form method="POST" action="{{ url_for('classi.elimina_materia_classe', materia_classe_id=mc.id) }}">
-                        <button class="btn btn-danger btn-sm">Elimina</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <form method="POST" action="{{ url_for('classi.salva_modifiche_materie', classe_id=classe.id) }}">
+
+        <table class="table table-bordered mt-3">
+            <thead class="table-light">
+                <tr>
+                    <th>Materia</th>
+                    <th>Docente</th>
+                    <th>Ore annuali</th>
+                    <th>Ore Min consecutive</th>
+                    <th>Colore</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for mc in materie_classe %}
+                <tr>
+                    <td>{{ mc.materia.nome }}</td>
+
+                    <!-- DOCENTE MODIFICABILE -->
+                    <td>
+                        <select name="docente_{{ mc.id }}" class="form-select">
+                            {% for d in docenti %}
+                            <option value="{{ d.id }}" {% if d.id == mc.docente_id %}selected{% endif %}>
+                                {{ d.nome_docente }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+
+                    <!-- ORE ANNUALI MODIFICABILI -->
+                    <td>
+                        <input type="number" name="ore_{{ mc.id }}" class="form-control"
+                               value="{{ mc.ore_annuali }}" min="1" max="1000">
+                    </td>
+
+                    <!-- ORE MINIME CONSECUTIVE MODIFICABILI -->
+                    <td>
+                        <input type="number" name="minime_{{ mc.id }}" class="form-control"
+                               value="{{ mc.ore_minime_consecutive }}"
+                               min="1" max="{{ classe.ore_massime_giornaliere }}">
+                    </td>
+
+                    <td>
+                        <div style="width:30px; height:30px; background:{{ mc.materia.colore }}; border-radius:4px;"></div>
+                    </td>
+
+                    <td>
+                        <form method="POST" action="{{ url_for('classi.elimina_materia_classe', materia_classe_id=mc.id) }}">
+                            <button class="btn btn-danger btn-sm">Elimina</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- 🔥 BOTTONE SALVA GENERALE -->
+        <button class="btn btn-primary mt-3">SALVA MODIFICHE</button>
+
+    </form>
 
 </div>
 

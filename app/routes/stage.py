@@ -37,6 +37,15 @@ def salva_stage():
     stage.periodo_stage_2_da = parse_date(request.form.get("stage2_da"))
     stage.periodo_stage_2_a = parse_date(request.form.get("stage2_a"))
 
+    # 🔥 Salva giorni stage (checkbox)
+    giorni_stage = request.form.getlist("giorni_stage")
+
+    # Se per qualche motivo non arriva nulla, metti default Lun–Ven
+    if not giorni_stage:
+        giorni_stage = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"]
+
+    stage.giorni_stage = ",".join(giorni_stage)
+
     db.session.commit()
 
     flash("Dati di stage salvati con successo!", "success")

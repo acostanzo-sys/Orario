@@ -3,83 +3,85 @@
 
 <div class="container mt-4">
 
+    <h2>Genera Calendario Scolastico</h2>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Genera Calendario Scolastico</h2>
+        <div></div>
 
         <div>
-            <a href="{{ url_for('orario.export_xls') }}" class="btn btn-success">
+            <form id="form-genera" 
+                  action="{{ url_for('orario.genera_calendario') }}" 
+                  method="POST" 
+                  style="display:inline;">
+                <button id="btn-genera" class="btn btn-primary" type="submit">
+                    Genera Cal
+                </button>
+            </form>
+
+            <a href="{{ url_for('orario.export_xls') }}" class="btn btn-success ms-2">
                 Scarica calendario annuale in XLS
             </a>
 
             <a href="{{ url_for('orario.report_vincoli') }}" class="btn btn-warning ms-2">
                 Report Vincoli
             </a>
+
+            <a href="{{ url_for('orario.diagnostica') }}" class="btn btn-danger ms-2">
+
+                Diagnostica Sovrapposizioni
+            </a>
+            
         </div>
     </div>
 
-    <p class="text-muted">
-        Anteprima della <strong>prima settimana reale</strong> generata per ogni classe.
-    </p>
+    <hr>
 
-    {% if not anteprima %}
-        <div class="alert alert-warning">
-            Nessun anno formativo configurato o nessuna classe trovata.
-        </div>
+    <h3>Calendari già generati</h3>
+
+    {% if files %}
+        <ul class="list-group mt-3">
+            {% for f in files %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    {{ f }}
+                    <a class="btn btn-primary btn-sm"
+                       href="{{ url_for('orario.download_calendario', filename=f) }}">
+                        Scarica
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
     {% else %}
-
-        {% for classe_id, dati in anteprima.items() %}
-        <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-primary text-white">
-                Calendario – {{ dati.nome_classe }}
-            </div>
-
-            <div class="card-body">
-
-                <table class="table table-bordered text-center align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Ora</th>
-                            {% for giorno in dati.settimana %}
-                                <th>
-                                    {{ giorno.giorno_settimana }}<br>
-                                    <span class="text-muted small">
-                                        {{ giorno.data.strftime("%d/%m/%Y") }}
-                                    </span>
-                                </th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        {% for idx in range(dati.ore_giornaliere) %}
-                        <tr>
-                            <td><strong>{{ dati.settimana[0].lezioni[idx].ora.strftime("%H:%M") }}</strong></td>
-
-                            {% for giorno in dati.settimana %}
-                                {% set lezione = giorno.lezioni[idx] %}
-                                <td>
-                                    {% if lezione.materia %}
-                                        <div><strong>{{ lezione.materia }}</strong></div>
-                                        {% if lezione.docente %}
-                                            <div class="text-muted small">{{ lezione.docente }}</div>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="text-muted">—</span>
-                                    {% endif %}
-                                </td>
-                            {% endfor %}
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-
-                </table>
-
-            </div>
-        </div>
-        {% endfor %}
-
+        <p class="text-muted mt-3">Nessun calendario generato finora.</p>
     {% endif %}
 
 </div>
+
+<!-- 🔥 POPUP "GENERAZIONE IN CORSO" -->
+<div id="popup-generazione" 
+     style="display:none;
+            position:fixed;
+            top:0; left:0;
+            width:100%; height:100%;
+            background:rgba(0,0,0,0.5);
+            z-index:9999;
+            align-items:center;
+            justify-content:center;
+            font-size:2rem;
+            color:white;
+            font-weight:bold;">
+    GENERAZIONE IN CORSO...
+</div>
+
+<!-- 🔥 SCRIPT: mostra popup SOLO quando clicchi il pulsante -->
+<script>
+const formGenera = document.getElementById("form-genera");
+const popup = document.getElementById("popup-generazione");
+
+if (formGenera && popup) {
+    formGenera.addEventListener("submit", function () {
+        popup.style.display = "flex";   // lo rendiamo visibile SOLO qui
+    });
+}
+</script>
 
 {% endblock %}

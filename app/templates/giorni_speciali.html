@@ -72,7 +72,12 @@
 
                     <div class="col-md-3 mt-3">
                         <label class="form-label">Docente (opzionale)</label>
-                        <input type="text" name="docente" class="form-control">
+                        <select name="docente_id" class="form-control">
+                            <option value="">-- nessuno --</option>
+                            {% for d in docenti %}
+                                <option value="{{ d.id }}">{{ d.nome_docente }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                 </div>
@@ -102,7 +107,13 @@
                 <td>{{ g.classe.nome_classe }}</td>
                 <td>{{ g.materia }}</td>
                 <td>{{ g.ore }}</td>
-                <td>{{ g.docente or "-" }}</td>
+                <td>
+                    {% if g.docente_id %}
+                        {{ g.docente.nome_docente }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
                 <td>
                     <a href="{{ url_for('vincoli.edit_giorno_speciale', id=g.id) }}"
                        class="btn btn-warning btn-sm">Modifica</a>

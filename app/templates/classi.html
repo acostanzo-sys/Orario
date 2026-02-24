@@ -29,33 +29,60 @@
     <!-- ELENCO CLASSI -->
     <h4>Elenco Classi</h4>
 
-    <table class="table table-bordered mt-3">
-        <thead class="table-light">
-            <tr>
-                <th>Classe</th>
-                <th>Azioni</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for c in classi %}
-            <tr>
-                <td>{{ c.nome_classe }}</td>
-                <td>
-                    <a href="{{ url_for('classi.materie_classe', classe_id=c.id) }}"
-                       class="btn btn-success btn-sm">
-                        Gestisci Materie
-                    </a>
+    <!-- 🔥 FORM SALVATAGGIO ASSOCIAZIONI -->
+    <form method="POST">
+        <input type="hidden" name="salva_associazioni" value="1">
 
-                    <form method="POST"
-                          action="{{ url_for('classi.elimina_classe', classe_id=c.id) }}"
-                          style="display:inline-block;">
-                        <button class="btn btn-danger btn-sm">Elimina</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <table class="table table-bordered mt-3">
+            <thead class="table-light">
+                <tr>
+                    <th>Classe</th>
+                    <th>Associazione</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for c in classi %}
+                <tr>
+                    <td>{{ c.nome_classe }}</td>
+
+                    <!-- 🔥 SELECT ASSOCIAZIONE -->
+                    <td>
+                        <select name="assoc_{{ c.id }}" class="form-select">
+                            <option value="none">Nessuna</option>
+
+                            {% for altra in classi %}
+                                {% if altra.id != c.id %}
+                                    <option value="{{ altra.id }}"
+                                        {% if c.classe_associata_id == altra.id %}selected{% endif %}>
+                                        {{ altra.nome_classe }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </td>
+
+                    <td>
+                        <a href="{{ url_for('classi.materie_classe', classe_id=c.id) }}"
+                           class="btn btn-success btn-sm">
+                            Gestisci Materie
+                        </a>
+
+                        <form method="POST"
+                              action="{{ url_for('classi.elimina_classe', classe_id=c.id) }}"
+                              style="display:inline-block;">
+                            <button class="btn btn-danger btn-sm">Elimina</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- 🔥 BOTTONE SALVA -->
+        <button class="btn btn-success mt-3">SALVA</button>
+    </form>
 
 </div>
 

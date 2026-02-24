@@ -36,6 +36,17 @@
                     </div>
 
                     <div class="col-md-3">
+                        <label class="form-label">Docente</label>
+                        <select name="docente_id" class="form-control" required>
+                            <option value="" disabled selected>-- seleziona --</option>
+                            {% for d in docenti %}
+                                <option value="{{ d.id }}">{{ d.nome_docente }}</option>
+                            {% endfor %}
+                        </select>
+                        
+                    </div>
+
+                    <div class="col-md-3">
                         <label class="form-label">Giorno</label>
                         <select name="giorno" class="form-control" required>
                             <option value="lun">Lunedì</option>
@@ -47,11 +58,13 @@
                         </select>
                     </div>
 
+                </div>
+
+                <div class="row mb-3">
                     <div class="col-md-3">
                         <label class="form-label">Ore consecutive</label>
                         <input type="number" name="ore" class="form-control" min="1" max="8" value="1" required>
                     </div>
-
                 </div>
 
                 <button class="btn btn-primary">Aggiungi</button>
@@ -66,6 +79,7 @@
             <tr>
                 <th>Classe</th>
                 <th>Materia</th>
+                <th>Docente</th>
                 <th>Giorno</th>
                 <th>Ore</th>
                 <th>Azioni</th>
@@ -76,6 +90,7 @@
             <tr>
                 <td>{{ gf.classe.nome_classe }}</td>
                 <td>{{ gf.materia.nome }}</td>
+                <td>{{ gf.docente.nome_docente }}</td>
                 <td>{{ gf.giorno }}</td>
                 <td>{{ gf.ore }}</td>
                 <td>

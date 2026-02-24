@@ -42,6 +42,31 @@
             </div>
         </div>
 
+        <h5>Giorni della settimana in cui si svolge lo stage</h5>
+        <div class="mb-3">
+
+            <label class="me-3">
+                <input type="checkbox" name="giorni_stage" value="Lunedì" checked> Lun
+            </label>
+
+            <label class="me-3">
+                <input type="checkbox" name="giorni_stage" value="Martedì" checked> Mar
+            </label>
+
+            <label class="me-3">
+                <input type="checkbox" name="giorni_stage" value="Mercoledì" checked> Mer
+            </label>
+
+            <label class="me-3">
+                <input type="checkbox" name="giorni_stage" value="Giovedì" checked> Gio
+            </label>
+
+            <label class="me-3">
+                <input type="checkbox" name="giorni_stage" value="Venerdì" checked> Ven
+            </label>
+
+        </div>
+
         <button class="btn btn-primary">Salva</button>
     </form>
 
@@ -56,12 +81,15 @@
                 <th>Classe</th>
                 <th>Stage 1</th>
                 <th>Stage 2</th>
+                <th>Giorni Stage</th>
+                <th>Azioni</th>
             </tr>
         </thead>
         <tbody>
             {% for s in stage_dati %}
             <tr>
                 <td>{{ s.classe.nome_classe }}</td>
+
                 <td>
                     {% if s.periodo_stage_1_da %}
                         {{ s.periodo_stage_1_da }} → {{ s.periodo_stage_1_a }}
@@ -69,6 +97,7 @@
                         -
                     {% endif %}
                 </td>
+
                 <td>
                     {% if s.periodo_stage_2_da %}
                         {{ s.periodo_stage_2_da }} → {{ s.periodo_stage_2_a }}
@@ -76,6 +105,26 @@
                         -
                     {% endif %}
                 </td>
+
+                <td>
+                    {% if s.giorni_stage %}
+                        {{ s.giorni_stage }}
+                    {% else %}
+                        Lunedì,Martedì,Mercoledì,Giovedì,Venerdì
+                    {% endif %}
+                </td>
+
+                <td>
+                    <form action="{{ url_for('orario.delete_stage', classe_id=s.classe_id) }}"
+                          method="POST"
+                          style="display:inline;">
+                        <button class="btn btn-danger btn-sm"
+                                onclick="return confirm('Eliminare le date di stage per questa classe?')">
+                            Elimina
+                        </button>
+                    </form>
+                </td>
+
             </tr>
             {% endfor %}
         </tbody>

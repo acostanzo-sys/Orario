@@ -68,10 +68,32 @@
                             </tr>
                         </thead>
                         <tbody>
+
+                            {% set ABBREV = {
+                                'Lunedì':'lun','Martedì':'mar','Mercoledì':'mer',
+                                'Giovedì':'gio','Venerdì':'ven','Sabato':'sab'
+                            } %}
+
                             {% for c in classi %}
-                            {% set giorni = (c.giorni_lezione or 'lun,mar,mer,gio,ven').split(',') %}
+                            {% set giorni_completi = (c.giorni_lezione or 'Lunedì,Martedì,Mercoledì,Giovedì,Venerdì').split(',') %}
+                            {% set giorni_abbrev = [] %}
+                            {% for g in giorni_completi %}
+                                {% set _ = giorni_abbrev.append(ABBREV.get(g.strip(), g.strip())) %}
+                            {% endfor %}
+
                             <tr>
-                                <td><strong>{{ c.nome_classe }}</strong></td>
+                                <td>
+                                    <strong>{{ c.nome_classe }}</strong>
+                                
+                                    <form action="{{ url_for('anni.reset_classe', classe_id=c.id) }}"
+                                          method="POST"
+                                          style="display:inline-block; margin-left:10px;"
+                                          onsubmit="return confirm('Vuoi davvero resettare questa classe?')">
+                                
+                                        <button class="btn btn-sm btn-outline-danger">Reset</button>
+                                    </form>
+                                </td>
+                                
 
                                 <td>
                                     <input type="date"
@@ -103,7 +125,7 @@
                                                    type="checkbox"
                                                    name="classe_{{ c.id }}_giorni"
                                                    value="{{ g }}"
-                                                   {% if g in giorni %}checked{% endif %}>
+                                                   {% if g in giorni_abbrev %}checked{% endif %}>
                                             <label class="form-check-label text-capitalize">{{ g }}</label>
                                         </div>
                                         {% endfor %}
@@ -112,11 +134,23 @@
 
                             </tr>
                             {% endfor %}
+
                         </tbody>
                     </table>
                 </div>
 
                 <button class="btn btn-primary mt-3">Salva Anno Formativo</button>
+
+                <button class="btn btn-primary mt-3">Salva Anno Formativo</button>
+
+                <button class="btn btn-danger mt-3 ms-3"
+                        type="submit"
+                        formaction="{{ url_for('anni.reset_anno') }}"
+                        formmethod="POST"
+                        onclick="return confirm('Sei sicuro di voler cancellare tutti i dati dell’anno formativo?')">
+                    RESET
+                </button>
+
 
             </form>
         </div>

@@ -16,11 +16,12 @@
             <a class="nav-link" href="/docenti">Docenti</a>
             <a class="nav-link" href="{{ url_for('materie.lista_materie') }}">Materie</a>
             <a class="nav-link" href="/anni">Anni Formativi</a>
-            <a class="nav-link" href="/festivita">Festività</a>   <!-- ⭐ AGGIUNTO QUI -->
+            <a class="nav-link" href="/festivita">Festività</a>
             <a class="nav-link" href="/stage">Stage</a>
             <a class="nav-link" href="{{ url_for('vincoli.index') }}">Vincoli</a>
-            <a class="nav-link" href="{{ url_for('orario.genera') }}">Genera calendario</a>
 
+            <!-- ⭐ Ora punta alla pagina intermedia -->
+            <a class="nav-link" href="{{ url_for('orario.lista_versioni') }}">Genera calendario</a>
 
         </div>
     </div>

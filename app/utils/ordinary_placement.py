@@ -11,71 +11,36 @@ import app.utils.occupazione as occ
 # 0) CHECK / INIT OCCUPAZIONE GLOBALE DOCENTE
 # ------------------------------------------------------------
 def docente_disponibile_global(docente_id, data, ora):
-    """
-    Ritorna True se il docente NON è occupato globalmente
-    in quella data/ora (su altre classi).
-    """
     if docente_id is None:
         return True
-
-    occ_global = occ.OCCUPAZIONE_DOCENTI_GLOBALE
-
-    if docente_id not in occ_global:
-        return True
-
-    if data not in occ_global[docente_id]:
-        return True
-
-    return ora not in occ_global[docente_id][data]
+    return occ.docente_libero(docente_id, data, ora)
 
 
 def inizializza_occupazione_globale_da_locale(occupazione_docenti):
-    """
-    Converte l'occupazione locale (che usa SET)
-    in OCCUPAZIONE_DOCENTI_GLOBALE (che usa dict → {ora: True})
-    """
     occ.OCCUPAZIONE_DOCENTI_GLOBALE.clear()
-
     for docente_id, giorni_dict in occupazione_docenti.items():
         for data, ore_set in giorni_dict.items():
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data, {})
             for ora in ore_set:
-                occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data][ora] = True
+                occ.occupa(docente_id, None, data, ora)
 
 
 # ------------------------------------------------------------
 # 1) CALCOLA FABBISOGNO SETTIMANALE
 # ------------------------------------------------------------
 def calcola_fabbisogno_settimanale(materie_info, settimane_classe):
-    """
-    Restituisce un dict:
-    materia_id → ore_per_settimana
-    """
     num_settimane = len(settimane_classe) or 1
-
     fabbisogno = {}
     for mid, info in materie_info.items():
         debito = info.get("debito_residuo", 0)
-        if debito <= 0:
-            continue
-
-        ore_sett = ceil(debito / num_settimane)
-        fabbisogno[mid] = ore_sett
-
+        if debito > 0:
+            fabbisogno[mid] = ceil(debito / num_settimane)
     return fabbisogno
 
 
 # ------------------------------------------------------------
-# 2) DISTRIBUISCI FABBISOGNO NELLE SETTIMANE (con blocchi)
+# 2) DISTRIBUISCI FABBISOGNO
 # ------------------------------------------------------------
 def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, docente_ok):
-    """
-    Per ogni settimana:
-    - prende il fabbisogno settimanale
-    - prova a piazzare le ore nei buchi disponibili
-    - rispetta blocchi minimi per materia (es. EDUCAZIONE MOTORIA = 2 ore)
-    """
 
     fabbisogno = calcola_fabbisogno_settimanale(materie_info, settimane_classe)
     ore_giornaliere = classe.ore_massime_giornaliere or 6
@@ -90,7 +55,6 @@ def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, doc
             docente_nome = info_m.get("docente_nome", "")
             nome_materia = info_m.get("nome", "").upper()
 
-            # blocco orario per la materia
             blocco = info_m.get("blocco_orario", 1)
             if blocco == 1 and "EDUCAZIONE" in nome_materia and "MOTORIA" in nome_materia:
                 blocco = 2
@@ -101,22 +65,18 @@ def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, doc
 
                 piazzato = False
 
-                # prova a piazzare in ogni giorno
                 for g in giorni:
                     data = g["data"]
                     giorno_it = g["giorno_it"]
 
-                    # salta i giorni speciali / STAGE / FESTA
                     if g.get("speciale") or g.get("is_special_day") or g.get("tipo") in ("STAGE", "FESTA"):
                         continue
 
                     for ora in range(ore_giornaliere - (blocco - 1)):
 
-                        # tutti gli slot del blocco devono essere liberi
                         if any(griglia[data][h] is not None for h in range(ora, ora + blocco)):
                             continue
 
-                        # vincoli di disponibilità docente (locale + globale) su tutto il blocco
                         if docente_id is not None:
                             ok_blocco = True
                             for h in range(ora, ora + blocco):
@@ -124,6 +84,9 @@ def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, doc
                                     ok_blocco = False
                                     break
                                 if not docente_disponibile_global(docente_id, data, h):
+                                    ok_blocco = False
+                                    break
+                                if occ.classe_occupata(classe.id, data, h):
                                     ok_blocco = False
                                     break
                             if not ok_blocco:
@@ -135,21 +98,24 @@ def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, doc
                         if crea_buco_in_giornata(griglia, data, ora, blocco):
                             continue
 
-                        # piazza blocco
                         piazza_blocco(
-                            griglia, data, ora, blocco,
+                            griglia,
+                            data,
+                            ora,
+                            blocco,
                             info_m["nome"],
                             docente_nome,
                             docente_id,
-                            None  # occupazione locale non usata
+                            None,
+                            classe_id=classe.id,
+                            materia_id=mid,
+                            tipo="ORDINARIO",
+                            origine="ordinario"
                         )
 
-                        # aggiorna globale per tutte le ore del blocco
-                        if docente_id is not None:
-                            occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-                            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data, {})
+                        if docente_id:
                             for h in range(ora, ora + blocco):
-                                occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data][h] = True
+                                occ.occupa(docente_id, classe.id, data, h)
 
                         info_m["debito_residuo"] -= blocco
                         info_m["ore_assegnate"] += blocco
@@ -161,75 +127,47 @@ def distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, doc
 
 
 # ------------------------------------------------------------
-# 3) COMPATTAZIONE GLOBALE (LEGGERA)
+# 3) COMPATTAZIONE LEGGERA
 # ------------------------------------------------------------
 def compatta_settimane(griglie, settimane_classe):
     for key in sorted(settimane_classe.keys()):
         giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
         griglia = griglie[key]
-
         for g in giorni:
-            data = g["data"]
-            compatta_giornata(griglia, data)
+            compatta_giornata(griglia, g["data"])
 
 
 # ------------------------------------------------------------
-# 4) UTILITY CONTEGGI SU GRIGLIA DI CLASSE
+# 4) UTILITY
 # ------------------------------------------------------------
 def count_ore_docente_in_classe(docente_id, griglia, data, ore_giornaliere):
-    """
-    Conta quante ore un docente insegna in QUESTA classe in un certo giorno,
-    guardando direttamente la griglia della classe (non la globale).
-    """
     if docente_id is None:
         return 0
-
     return sum(
-        1
-        for h in range(ore_giornaliere)
+        1 for h in range(ore_giornaliere)
         if isinstance(griglia[data][h], dict)
         and griglia[data][h].get("docente_id") == docente_id
     )
 
 
 def crea_buco_docente(docente_id, data, ora):
-    """
-    Ritorna True se togliere la lezione a (data, ora) crea un buco
-    nella giornata del docente (su TUTTE le classi).
-    """
     occ_doc = occ.OCCUPAZIONE_DOCENTI_GLOBALE.get(docente_id, {})
     ore = occ_doc.get(data, {})
-
     if ora not in ore:
-        return False  # non c'è nulla da togliere
-
+        return False
     ore_list = sorted(ore.keys())
-    ha_prima = any(h < ora for h in ore_list)
-    ha_dopo = any(h > ora for h in ore_list)
-
-    # se ha ore prima e dopo → togliere crea un buco
-    if ha_prima and ha_dopo:
-        return True
-
-    return False
+    return any(h < ora for h in ore_list) and any(h > ora for h in ore_list)
 
 
 def count_ore_in_giornata(griglia, data, ore_giornaliere):
-    """
-    Conta quante ore sono presenti in una giornata per una classe.
-    Serve per non svuotare i giorni (0 o 1 ora).
-    """
     return sum(1 for h in range(ore_giornaliere) if griglia[data][h] is not None)
 
 
 # ------------------------------------------------------------
-# 5) BACKFILL: RIEMPI I BUCHI PRENDENDO ORE DAL FUTURO
+# 5) BACKFILL — PATCHATO (INVARIATO)
 # ------------------------------------------------------------
 def backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok):
-    """
-    Riempie buchi prendendo lezioni dalle settimane future.
-    Ritorna True se ha effettuato almeno uno spostamento.
-    """
+
     changed = False
     ore_giornaliere = classe.ore_massime_giornaliere or 6
 
@@ -241,17 +179,17 @@ def backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok):
             data = g["data"]
             giorno_it = g["giorno_it"]
 
-            # ⛔ NON toccare i giorni speciali
             if g.get("speciale") or g.get("is_special_day") or g.get("tipo") in ("STAGE", "FESTA"):
                 continue
 
             for ora in range(ore_giornaliere):
 
-                # slot già pieno → salta
                 if griglia[data][ora] is not None:
                     continue
 
-                # cerca una lezione nelle settimane future
+                if occ.classe_occupata(classe.id, data, ora):
+                    continue
+
                 for future_key in sorted(settimane_classe.keys()):
                     if future_key <= key:
                         continue
@@ -265,16 +203,15 @@ def backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok):
                         f_data = fg["data"]
                         f_giorno_it = fg["giorno_it"]
 
-                        # NON svuotare giorni con 0 o 1 ora
                         if count_ore_in_giornata(future_griglia, f_data, ore_giornaliere) <= 1:
                             continue
 
                         for f_ora in range(ore_giornaliere):
+
                             slot = future_griglia[f_data][f_ora]
                             if slot is None:
                                 continue
 
-                            # NON spostare lezioni fisse, speciali, STAGE, FESTA, PROFESSIONALI, DOC EST
                             if slot.get("fisso"):
                                 continue
                             if slot.get("tipo") in ("STAGE", "FESTA", "PROFESSIONALE"):
@@ -286,54 +223,55 @@ def backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok):
 
                             docente_id = slot.get("docente_id")
 
-                            # 1) disponibilità locale DESTINAZIONE (wrapper)
                             if docente_id and not docente_ok(docente_id, data, giorno_it, ora, 1):
                                 continue
 
-                            # 2) disponibilità globale DESTINAZIONE
                             if docente_id and not docente_disponibile_global(docente_id, data, ora):
                                 continue
 
-                            # 3) NON creare buco nella classe destinazione
+                            if occ.classe_occupata(classe.id, data, ora):
+                                continue
+
                             if crea_buco_in_giornata(griglia, data, ora, 1):
                                 continue
 
-                            # 4) NON creare buco nella classe origine
                             if crea_buco_in_giornata(future_griglia, f_data, f_ora, 1):
                                 continue
 
-                            # 5) NON creare buco nella giornata del docente
                             if docente_id and crea_buco_docente(docente_id, f_data, f_ora):
                                 continue
 
-                            # 6) massimo 3 ore dello stesso docente nella stessa classe (destinazione)
                             if docente_id and count_ore_docente_in_classe(
                                 docente_id, griglia, data, ore_giornaliere
                             ) >= 3:
                                 continue
 
-                            # 7) almeno 4 ore nella classe origine
                             if docente_id and count_ore_docente_in_classe(
                                 docente_id, future_griglia, f_data, ore_giornaliere
                             ) <= 4:
                                 continue
 
-                            # 8) controllo locale SORGENTE (wrapper, per coerenza)
                             if docente_id and not docente_ok(docente_id, f_data, f_giorno_it, f_ora, 1):
                                 continue
 
-                            # SPOSTAMENTO SICURO
-                            griglia[data][ora] = slot
+                            piazza_blocco(
+                                griglia,
+                                data,
+                                ora,
+                                1,
+                                slot["materia"],
+                                slot["docente"],
+                                slot["docente_id"],
+                                None,
+                                classe_id=classe.id,
+                                materia_id=slot.get("materia_id"),
+                                tipo="ORDINARIO",
+                                origine="backfill"
+                            )
+
                             future_griglia[f_data][f_ora] = None
-
-                            # aggiorna occupazione globale
                             if docente_id:
-                                occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-                                occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data, {})
-                                occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data][ora] = True
-
-                                if f_data in occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id]:
-                                    occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][f_data].pop(f_ora, None)
+                                occ.libera(docente_id, f_data, f_ora)
 
                             trovato = True
                             changed = True
@@ -346,162 +284,11 @@ def backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok):
 
     return changed
 
-
 # ------------------------------------------------------------
-# 6) RIEQUILIBRIO GIORNATE
+# 6.5) NUOVA PASSATA: GARANTISCI 4 ORE CONSECUTIVE
 # ------------------------------------------------------------
-def riequilibra_giornate(griglie, settimane_classe, classe, materie_info, docente_ok):
-    """
-    Riequilibra le giornate portando ogni giorno NON speciale
-    ad almeno 4 ore, senza violare alcun vincolo del motore.
-    Ritorna True se ha effettuato almeno uno spostamento.
-    """
+def garantisci_quattro_ore_consecutive(griglie, settimane_classe, classe, materie_info, docente_ok):
 
-    changed = False
-    ore_minime = 4
-    ore_giornaliere = classe.ore_massime_giornaliere or 6
-
-    for key in sorted(settimane_classe.keys()):
-        giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
-        griglia = griglie[key]
-
-        # 1) Identifica giorni poveri e giorni ricchi
-        giorni_poveri = []
-        giorni_ricchi = []
-
-        for g in giorni:
-            data = g["data"]
-
-            # NON toccare giorni speciali / STAGE / FESTA
-            if g.get("speciale") or g.get("tipo") in ("STAGE", "FESTA"):
-                continue
-
-            ore_presenti = sum(
-                1 for h in range(ore_giornaliere)
-                if isinstance(griglia[data][h], dict)
-            )
-
-            if ore_presenti < ore_minime:
-                giorni_poveri.append((data, ore_presenti))
-            elif ore_presenti >= ore_minime + 2:
-                giorni_ricchi.append((data, ore_presenti))
-
-        # 2) Riequilibrio: sposta ore dai ricchi ai poveri
-        for data_povero, ore_povero in giorni_poveri:
-            if ore_povero >= ore_minime:
-                continue
-
-            for data_ricco, ore_ricco in giorni_ricchi:
-
-                # NON scendere sotto 4 ore nel giorno ricco
-                if ore_ricco <= ore_minime:
-                    continue
-
-                # NON toccare giorni speciali / STAGE / FESTA nel ricco
-                if any(
-                    isinstance(slot, dict) and slot.get("tipo") in ("STAGE", "FESTA", "SPECIALE")
-                    for slot in griglia[data_ricco]
-                ):
-                    continue
-
-                # NON toccare giorni con slot fissi nel ricco
-                if any(
-                    isinstance(slot, dict) and slot.get("fisso")
-                    for slot in griglia[data_ricco]
-                ):
-                    continue
-
-                for ora_r in range(ore_giornaliere):
-                    slot = griglia[data_ricco][ora_r]
-
-                    # Slot vuoto → skip
-                    if not isinstance(slot, dict):
-                        continue
-
-                    docente_id = slot.get("docente_id")
-                    materia = slot.get("materia")
-
-                    # NON toccare fissi, speciali, STAGE, FESTA, DOC EST
-                    if slot.get("fisso"):
-                        continue
-                    if slot.get("tipo") in ("STAGE", "FESTA", "SPECIALE"):
-                        continue
-                    if slot.get("docente") and "DOC EST" in slot.get("docente"):
-                        continue
-
-                    # NON spezzare blocchi
-                    mid = next(
-                        (m for m, info in materie_info.items() if info["nome"] == materia),
-                        None
-                    )
-                    if mid:
-                        blocco = materie_info[mid].get("blocco_orario", 1)
-                        if blocco > 1:
-                            continue
-
-                    # NON creare buchi nel giorno ricco
-                    if crea_buco_in_giornata(griglia, data_ricco, ora_r, 1):
-                        continue
-
-                    # Cerca slot libero nel giorno povero
-                    for ora_p in range(ore_giornaliere):
-
-                        # Slot non libero → skip
-                        if griglia[data_povero][ora_p] is not None:
-                            continue
-
-                        # NON creare buchi nel giorno povero
-                        if crea_buco_in_giornata(griglia, data_povero, ora_p, 1):
-                            continue
-
-                        giorno_it_p = next(
-                            g["giorno_it"] for g in giorni if g["data"] == data_povero
-                        )
-
-                        # Disponibilità locale DESTINAZIONE (wrapper)
-                        if docente_id and not docente_ok(docente_id, data_povero, giorno_it_p, ora_p, 1):
-                            continue
-
-                        # Disponibilità globale DESTINAZIONE
-                        if docente_id and not docente_disponibile_global(docente_id, data_povero, ora_p):
-                            continue
-
-                        # NON superare 3 ore dello stesso docente nella stessa classe
-                        if docente_id and count_ore_docente_in_classe(
-                            docente_id, griglia, data_povero, ore_giornaliere
-                        ) >= 3:
-                            continue
-
-                        # SPOSTAMENTO SICURO
-                        griglia[data_povero][ora_p] = slot
-                        griglia[data_ricco][ora_r] = None
-
-                        # Aggiorna occupazione globale
-                        if docente_id:
-                            occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-                            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data_povero, {})
-                            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data_povero][ora_p] = True
-
-                            if data_ricco in occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id]:
-                                occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data_ricco].pop(ora_r, None)
-
-                        ore_povero += 1
-                        ore_ricco -= 1
-                        changed = True
-                        break
-
-    return changed
-
-
-# ------------------------------------------------------------
-# 7) COMPATTAZIONE AGGRESSIVA (CHIUSURA BUCHI NELLA STESSA GIORNATA)
-# ------------------------------------------------------------
-def compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, docente_ok):
-    """
-    Prova a chiudere i buchi all'interno della stessa giornata,
-    spostando lezioni più in alto possibile, rispettando tutti i vincoli.
-    Ritorna True se ha effettuato almeno uno spostamento.
-    """
     changed = False
     ore_giornaliere = classe.ore_massime_giornaliere or 6
 
@@ -513,22 +300,100 @@ def compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, do
             data = g["data"]
             giorno_it = g["giorno_it"]
 
-            # NON toccare giorni speciali / STAGE / FESTA
+            if g.get("speciale") or g.get("tipo") in ("STAGE", "FESTA"):
+                continue
+
+            ore_presenti = [h for h in range(ore_giornaliere) if griglia[data][h] is not None]
+
+            # Se già 4 consecutive → OK
+            if len(ore_presenti) >= 4:
+                consecutive = 1
+                for i in range(1, len(ore_presenti)):
+                    if ore_presenti[i] == ore_presenti[i-1] + 1:
+                        consecutive += 1
+                        if consecutive >= 4:
+                            break
+                    else:
+                        consecutive = 1
+                if consecutive >= 4:
+                    continue
+
+            # Compattazione interna
+            target = 0
+            for h in range(ore_giornaliere):
+                if griglia[data][h] is not None:
+                    slot = griglia[data][h]
+                    docente_id = slot.get("docente_id")
+
+                    if h == target:
+                        target += 1
+                        continue
+
+                    if docente_id and not docente_ok(docente_id, data, giorno_it, target, 1):
+                        continue
+                    if docente_id and not docente_disponibile_global(docente_id, data, target):
+                        continue
+                    if occ.classe_occupata(classe.id, data, target):
+                        continue
+
+                    piazza_blocco(
+                        griglia,
+                        data,
+                        target,
+                        1,
+                        slot["materia"],
+                        slot["docente"],
+                        docente_id,
+                        None,
+                        classe_id=classe.id,
+                        materia_id=slot.get("materia_id"),
+                        tipo="ORDINARIO",
+                        origine="4consecutive"
+                    )
+
+                    griglia[data][h] = None
+                    if docente_id:
+                        occ.libera(docente_id, data, h)
+
+                    changed = True
+                    target += 1
+
+    return changed
+
+
+# ------------------------------------------------------------
+# 7) COMPATTAZIONE AGGRESSIVA — PATCHATA
+# ------------------------------------------------------------
+def compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, docente_ok):
+
+    changed = False
+    ore_giornaliere = classe.ore_massime_giornaliere or 6
+
+    for key in sorted(settimane_classe.keys()):
+        giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
+        griglia = griglie[key]
+
+        for g in giorni:
+            data = g["data"]
+            giorno_it = g["giorno_it"]
+
             if g.get("speciale") or g.get("tipo") in ("STAGE", "FESTA"):
                 continue
 
             for ora in range(ore_giornaliere):
-                # se slot pieno → niente
+
                 if griglia[data][ora] is not None:
                     continue
 
-                # cerco una lezione più in basso da risalire
+                if occ.classe_occupata(classe.id, data, ora):
+                    continue
+
                 for f_ora in range(ora + 1, ore_giornaliere):
+
                     slot = griglia[data][f_ora]
                     if slot is None:
                         continue
 
-                    # NON spostare fissi, speciali, STAGE, FESTA, PROFESSIONALI, DOC EST
                     if slot.get("fisso"):
                         continue
                     if slot.get("tipo") in ("STAGE", "FESTA", "PROFESSIONALE", "SPECIALE"):
@@ -541,7 +406,6 @@ def compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, do
                     docente_id = slot.get("docente_id")
                     materia = slot.get("materia")
 
-                    # NON spezzare blocchi > 1
                     mid = next(
                         (m for m, info in materie_info.items() if info["nome"] == materia),
                         None
@@ -551,45 +415,168 @@ def compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, do
                         if blocco > 1:
                             continue
 
-                    # disponibilità locale DESTINAZIONE
                     if docente_id and not docente_ok(docente_id, data, giorno_it, ora, 1):
                         continue
 
-                    # disponibilità globale DESTINAZIONE
                     if docente_id and not docente_disponibile_global(docente_id, data, ora):
                         continue
 
-                    # NON creare buco nella posizione di origine
+                    if occ.classe_occupata(classe.id, data, ora):
+                        continue
+
                     if crea_buco_in_giornata(griglia, data, f_ora, 1):
                         continue
 
-                    # NON superare 3 ore dello stesso docente nella stessa classe
                     if docente_id and count_ore_docente_in_classe(
                         docente_id, griglia, data, ore_giornaliere
                     ) >= 3:
                         continue
 
-                    # SPOSTAMENTO SICURO NELLA STESSA GIORNATA
-                    griglia[data][ora] = slot
-                    griglia[data][f_ora] = None
+                    piazza_blocco(
+                        griglia,
+                        data,
+                        ora,
+                        1,
+                        slot["materia"],
+                        slot["docente"],
+                        slot["docente_id"],
+                        None,
+                        classe_id=classe.id,
+                        materia_id=slot.get("materia_id"),
+                        tipo="ORDINARIO",
+                        origine="compattazione"
+                    )
 
-                    # aggiorna occupazione globale
+                    griglia[data][f_ora] = None
                     if docente_id:
-                        occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-                        occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data, {})
-                        occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data][ora] = True
-                        occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data].pop(f_ora, None)
+                        occ.libera(docente_id, data, f_ora)
 
                     changed = True
-                    break  # passa al prossimo buco
+                    break
+
+    return changed
+
+# -----------------------
+# 7.5 Riequilibra giornate
+# -----------------------
+
+def riequilibra_giornate(griglie, settimane_classe, classe, materie_info, docente_ok):
+
+    changed = False
+    ore_giornaliere = classe.ore_massime_giornaliere or 6
+
+    for key in sorted(settimane_classe.keys()):
+        giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
+        griglia = griglie[key]
+
+        # Calcola carico giornaliero
+        carichi = {
+            g["data"]: sum(1 for h in range(ore_giornaliere) if griglia[g["data"]][h] is not None)
+            for g in giorni
+            if not g.get("speciale") and g.get("tipo") not in ("STAGE", "FESTA")
+        }
+
+        # Giorni troppo pieni e troppo vuoti
+        giorni_pieni = [d for d, c in carichi.items() if c >= 5]
+        giorni_vuoti = [d for d, c in carichi.items() if c <= 2]
+
+        if not giorni_pieni or not giorni_vuoti:
+            continue
+
+        for data_piena in giorni_pieni:
+            for data_vuota in giorni_vuoti:
+
+                # Trova uno slot libero nel giorno vuoto
+                for ora_dest in range(ore_giornaliere):
+                    if griglia[data_vuota][ora_dest] is not None:
+                        continue
+                    if occ.classe_occupata(classe.id, data_vuota, ora_dest):
+                        continue
+                    if crea_buco_in_giornata(griglia, data_vuota, ora_dest, 1):
+                        continue
+
+                    # Trova uno slot spostabile nel giorno pieno
+                    for ora_src in range(ore_giornaliere):
+                        slot = griglia[data_piena][ora_src]
+                        if slot is None:
+                            continue
+
+                        # Escludi slot non spostabili
+                        if slot.get("fisso"):
+                            continue
+                        if slot.get("tipo") in ("STAGE", "FESTA", "PROFESSIONALE", "SPECIALE"):
+                            continue
+                        if slot.get("origine") in ("speciale", "fisso"):
+                            continue
+                        if slot.get("docente") and "DOC EST" in slot.get("docente"):
+                            continue
+
+                        docente_id = slot.get("docente_id")
+                        materia = slot.get("materia")
+
+                        # Blocchi > 1 non spostabili
+                        mid = next((m for m, info in materie_info.items() if info["nome"] == materia), None)
+                        if mid:
+                            blocco = materie_info[mid].get("blocco_orario", 1)
+                            if blocco > 1:
+                                continue
+
+                        # Vincoli docente
+                        giorno_it_dest = next(g["giorno_it"] for g in giorni if g["data"] == data_vuota)
+                        giorno_it_src = next(g["giorno_it"] for g in giorni if g["data"] == data_piena)
+
+                        if docente_id:
+                            if not docente_ok(docente_id, data_vuota, giorno_it_dest, ora_dest, 1):
+                                continue
+                            if not docente_disponibile_global(docente_id, data_vuota, ora_dest):
+                                continue
+                            if not docente_ok(docente_id, data_piena, giorno_it_src, ora_src, 1):
+                                continue
+
+                        # Evita buchi nel giorno pieno
+                        if crea_buco_in_giornata(griglia, data_piena, ora_src, 1):
+                            continue
+
+                        # Tutto ok → sposta
+                        piazza_blocco(
+                            griglia,
+                            data_vuota,
+                            ora_dest,
+                            1,
+                            slot["materia"],
+                            slot["docente"],
+                            docente_id,
+                            None,
+                            classe_id=classe.id,
+                            materia_id=slot.get("materia_id"),
+                            tipo="ORDINARIO",
+                            origine="riequilibrio"
+                        )
+
+                        # Libera slot originale
+                        griglia[data_piena][ora_src] = None
+                        if docente_id:
+                            occ.libera(docente_id, data_piena, ora_src)
+                            occ.occupa(docente_id, classe.id, data_vuota, ora_dest)
+
+                        changed = True
+                        break
+
+                    if changed:
+                        break
+                if changed:
+                    break
+            if changed:
+                break
 
     return changed
 
 
+
 # ------------------------------------------------------------
-# 8) ORDINARIO GLOBALE COMPLETO (firma compatibile con l’orchestratore)
+# 8) ORDINARIO GLOBALE COMPLETO
 # ------------------------------------------------------------
-from app.utils.occupazione import rebuild_global_occupation
+from app.utils.fixed_days_handler import apply_fixed_days
 
 def apply_ordinary(
     griglie,
@@ -601,40 +588,179 @@ def apply_ordinary(
     occupazione_docenti,
     docente_ok
 ):
-    """
-    Nuovo motore ordinario globale:
-    - inizializza occupazione globale dai dati locali
-    - distribuzione settimanale del fabbisogno
-    - più passate di:
-        * backfill buchi
-        * riequilibrio giornate
-        * compattazione aggressiva
-    - ricostruzione globale dopo ogni passata
-    - compattazione finale leggera
-    """
 
-    # 0) inizializza occupazione globale partendo dall'occupazione locale
+    # 0) Inizializza OCCUPAZIONE_CLASSI_GLOBALE
+    for key in sorted(settimane_classe.keys()):
+        giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
+        for g in giorni:
+            data = g["data"]
+            occ.OCCUPAZIONE_CLASSI_GLOBALE.setdefault(classe.id, {})
+            occ.OCCUPAZIONE_CLASSI_GLOBALE[classe.id].setdefault(data, set())
+
+    # 0.5) Inizializza OCCUPAZIONE_DOCENTI_GLOBALE 
     inizializza_occupazione_globale_da_locale(occupazione_docenti)
 
-    # 1) distribuzione iniziale
-    distribuisci_fabbisogno(griglie, settimane_classe, classe, materie_info, docente_ok)
+    # 1) Giorni fissi
+    giorni_fissi_classe = getattr(classe, "giorni_fissi", None)
 
-    # 2) ciclo di ottimizzazione aggressivo
-    for _ in range(5):  # 5 passate aggressive
+    giorni_settimana = [
+        g
+        for settimana in settimane_classe.values()
+        for g in settimana
+    ]
+
+    apply_fixed_days(
+        griglia=griglie,
+        giorni_settimana=giorni_settimana,
+        classe=classe,
+        materie_info=materie_info,
+        materie_dict=materie_dict,
+        occupazione_docenti=occupazione_docenti,
+        giorni_fissi_classe=giorni_fissi_classe,
+        docente_ok=docente_ok
+    )
+
+
+    # 2) Distribuzione iniziale
+    distribuisci_fabbisogno(
+        griglie,
+        settimane_classe,
+        classe,
+        materie_info,
+        docente_ok
+    )
+
+    # 3) Ciclo di ottimizzazione
+    for _ in range(5):
         changed = False
 
-        changed |= backfill_buchi(griglie, settimane_classe, classe, materie_info, docente_ok)
-        changed |= riequilibra_giornate(griglie, settimane_classe, classe, materie_info, docente_ok)
-        changed |= compattazione_aggressiva(griglie, settimane_classe, classe, materie_info, docente_ok)
+        changed |= backfill_buchi(
+            griglie,
+            settimane_classe,
+            classe,
+            materie_info,
+            docente_ok
+        )
 
-        # 🔥 Ricostruzione globale dopo ogni passata
-        rebuild_global_occupation(griglie, settimane_classe, classe.ore_massime_giornaliere)
+        changed |= riequilibra_giornate(
+            griglie,
+            settimane_classe,
+            classe,
+            materie_info,
+            docente_ok
+        )
+
+        changed |= garantisci_quattro_ore_consecutive(
+            griglie,
+            settimane_classe,
+            classe,
+            materie_info,
+            docente_ok
+        )
+
+        changed |= compattazione_aggressiva(
+            griglie,
+            settimane_classe,
+            classe,
+            materie_info,
+            docente_ok
+        )
 
         if not changed:
             break
 
-    # 3) compattazione finale "soft"
+    # 4) Compattazione finale
     compatta_settimane(griglie, settimane_classe)
+
+    # 5) Recupero ore non piazzate
+    
+    recupera_debito_residuo(
+        griglie,
+        settimane_classe,
+        classe,
+        materie_info,
+        docente_ok
+    )
+
+    
+    
+    def recupera_debito_residuo(griglie, settimane_classe, classe, materie_info, docente_ok):
+
+        changed = False
+        ore_giornaliere = classe.ore_massime_giornaliere or 6
+
+        for mid, info_m in materie_info.items():
+            debito = info_m.get("debito_residuo", 0)
+            if debito <= 0:
+                continue
+
+            docente_id = info_m.get("docente_id")
+            docente_nome = info_m.get("docente_nome", "")
+            blocco = info_m.get("blocco_orario", 1)
+
+            for key in sorted(settimane_classe.keys()):
+                giorni = sorted(settimane_classe[key], key=lambda x: x["data"])
+                griglia = griglie[key]
+
+                for g in giorni:
+                    data = g["data"]
+                    giorno_it = g["giorno_it"]
+
+                    if g.get("speciale") or g.get("tipo") in ("STAGE", "FESTA"):
+                        continue
+
+                    for ora in range(ore_giornaliere - (blocco - 1)):
+
+                        if debito <= 0:
+                            break
+
+                        if any(griglia[data][h] is not None for h in range(ora, ora + blocco)):
+                            continue
+
+                        if docente_id:
+                            ok = True
+                            for h in range(ora, ora + blocco):
+                                if not docente_ok(docente_id, data, giorno_it, h, 1):
+                                    ok = False
+                                    break
+                                if not docente_disponibile_global(docente_id, data, h):
+                                    ok = False
+                                    break
+                                if occ.classe_occupata(classe.id, data, h):
+                                    ok = False
+                                    break
+                            if not ok:
+                                continue
+
+                        if crea_buco_in_giornata(griglia, data, ora, blocco):
+                            continue
+
+                        piazza_blocco(
+                            griglia,
+                            data,
+                            ora,
+                            blocco,
+                            info_m["nome"],
+                            docente_nome,
+                            docente_id,
+                            None,
+                            classe_id=classe.id,
+                            materia_id=mid,
+                            tipo="RECUPERO",
+                            origine="recupero"
+                        )
+
+                        if docente_id:
+                            for h in range(ora, ora + blocco):
+                                occ.occupa(docente_id, classe.id, data, h)
+
+                        info_m["debito_residuo"] -= blocco
+                        info_m["ore_assegnate"] += blocco
+                        debito -= blocco
+                        changed = True
+
+        return changed
+
 
 
 # ------------------------------------------------------------

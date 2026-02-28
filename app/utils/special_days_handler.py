@@ -2,14 +2,10 @@
 
 from app.models import Docente
 from app.utils.orario_utils import giorno_speciale_classe, piazza_blocco
-from app.utils.ordinary_placement import registra_occupazione
 import app.utils.occupazione as occ
 
-
 print(">>> SPECIAL DAYS HANDLER CARICATO")
-
 print(">>> LOADING special_days_handler.py FROM:", __file__)
-
 
 
 def apply_special_days(
@@ -26,7 +22,7 @@ def apply_special_days(
     - piazza SOLO le ore indicate nel DB
     - NON riempie la giornata
     - rispetta i vincoli docente (docente_ok)
-    - aggiorna occupazione locale + globale
+    - aggiorna occupazione locale + globale (tramite piazza_blocco)
     - marca la materia come "giorno speciale" per bloccare l’ordinario
     """
 
@@ -37,7 +33,6 @@ def apply_special_days(
         # Se c'è STAGE → skip
         row = griglia[data_g]
 
-        # Se c’è STAGE in qualunque slot → skip
         if any(
             slot and isinstance(slot, dict) and slot.get("materia") == "STAGE"
             for slot in row
@@ -46,14 +41,12 @@ def apply_special_days(
 
         # Recupera eventuale giorno speciale
         gs = giorno_speciale_classe(classe.id, data_g)
-        
-
         if not gs:
             continue
 
         g["speciale"] = True
 
-        # Identifica la materia
+        # Identifica la materia (ricava ID dal nome)
         mid = next((k for k, v in materie_dict.items() if v == gs.materia), None)
         if mid not in materie_info:
             continue
@@ -77,28 +70,29 @@ def apply_special_days(
             if ore_piazzate >= ore_da_piazzare:
                 break
 
-            # 🔥 Controllo docente globale
+            # 🔥 Controllo disponibilità docente
             if docente_ok and not docente_ok(docente_id, data_g, giorno_it, i, 1):
                 continue
 
             print(">>> SPECIALE PIAZZA:", docente_id, data_g, i, 1)
 
-            # Piazza 1 ora
+            # 🔥 Piazza 1 ora (aggiorna automaticamente la globale)
             piazza_blocco(
-                griglia, data_g, i, 1,
-                gs.materia,
+                griglia,
+                data_g,
+                i,
+                1,                              # blocco = 1 ora
+                gs.materia,                     # nome materia
                 docente.nome_docente if docente else "",
                 docente_id,
-                occupazione_docenti
+                occupazione_docenti,
+                classe_id=classe.id,            # 🔥 necessario per la globale
+                materia_id=mid,                 # 🔥 ID materia corretto
+                tipo="SPECIALE",                # 🔥 identifica slot speciale
+                origine="speciale"              # 🔥 utile per validatore e debug
             )
 
-            # 🔥 registra anche nella globale
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault(docente_id, {})
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id].setdefault(data_g, {})
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE[docente_id][data_g][i] = True
-
-
-            # Marca come slot fisso
+            # Marca come slot speciale/fisso
             griglia[data_g][i]["fisso"] = True
             griglia[data_g][i]["tipo"] = "SPECIALE"
 

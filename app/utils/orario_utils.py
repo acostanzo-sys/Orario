@@ -195,50 +195,69 @@ def slot_libero(griglia, data, start, blocco):
     return True
 
 
-def piazza_blocco(griglia, data, start, blocco, materia, docente, docente_id, occupazione_docenti):
+def piazza_blocco(
+    griglia,
+    data,
+    start,
+    blocco,
+    materia,
+    docente,
+    docente_id,
+    occupazione_docenti,
+    classe_id=None,
+    materia_id=None,
+    tipo="NORMALE",
+    origine="ordinario"
+):
     """
-    Piazza un blocco nella griglia:
-    - aggiorna SOLO l’occupazione locale (se presente)
-    - NON aggiorna l’occupazione globale (lo fa il motore ordinario)
+    Piazza un blocco nella griglia e aggiorna l’occupazione globale.
     """
 
-    # Normalizza id
+    # Normalizza id docente
     try:
         docente_id_norm = int(docente_id) if docente_id is not None else None
     except Exception:
         docente_id_norm = None
 
     docente_obj = Docente.query.get(docente_id_norm) if docente_id_norm else None
-
-    # Nome docente effettivo
     docente_nome_effettivo = docente_obj.nome_docente if docente_obj else docente
 
-    # PIAZZAMENTO NELLA GRIGLIA
+    # --- PIAZZAMENTO NELLA GRIGLIA ---
     for i in range(start, start + blocco):
         griglia[data][i] = {
             "materia": materia,
+            "materia_id": materia_id,
             "docente": docente_nome_effettivo or "",
             "docente_id": docente_id_norm,
-            "fisso": False,
+            "classe_id": classe_id,
+            "tipo": tipo,
+            "origine": origine,
+            "blocco": blocco,
+            "fisso": (tipo == "FISSO"),
         }
 
-    # DOC EST → non registra occupazione
-    if docente_obj and docente_obj.nome_docente == "DOC EST":
+    # --- DOC EST → non occupa globalmente ---
+    if docente_nome_effettivo == "DOC EST":
         return
 
-    # Docente non valido → non registra occupazione
-    if not docente_obj:
-        return
+    # --- AGGIORNA OCCUPAZIONE GLOBALE DOCENTI ---
+    if docente_id_norm:
+        for i in range(start, start + blocco):
+            occ.occupa(docente_id_norm, classe_id, data, i)
 
-    # 🔥 OCCUPAZIONE LOCALE (solo se NON è None)
-    if occupazione_docenti is not None:
+    # --- AGGIORNA OCCUPAZIONE GLOBALE CLASSI ---
+    if classe_id:
+        occ.OCCUPAZIONE_CLASSI_GLOBALE.setdefault(classe_id, {})
+        occ.OCCUPAZIONE_CLASSI_GLOBALE[classe_id].setdefault(data, set())
+        for i in range(start, start + blocco):
+            occ.OCCUPAZIONE_CLASSI_GLOBALE[classe_id][data].add(i)
+
+    # --- AGGIORNA OCCUPAZIONE LOCALE (legacy) ---
+    if occupazione_docenti is not None and docente_id_norm:
         occupazione_docenti.setdefault(docente_id_norm, {})
         occupazione_docenti[docente_id_norm].setdefault(data, set())
-
         for i in range(start, start + blocco):
             occupazione_docenti[docente_id_norm][data].add(i)
-
-    # 🔥 NON aggiornare qui l’occupazione globale.
 
 
 

@@ -4,47 +4,42 @@ from app.utils.orario_utils import giorno_festivo, classe_in_stage_giorno
 import app.utils.occupazione as occ
 
 
+
 def apply_stage(griglia, giorni_settimana, classe):
     """
     STAGE (hard lock totale):
     - riempie tutta la giornata con 'STAGE'
-    - mantiene la griglia come dict {ora: slot}
-    - registra l’occupazione globale come blocco speciale
-    - impedisce al motore di vedere buchi
+    - marca gli slot come fissi e non modificabili
+    - registra l’occupazione della CLASSE (non del docente!)
+    - impedisce al motore ordinario di usare questi slot
     """
 
     for g in giorni_settimana:
         data_g = g["data"]
 
-        # Salta festivi veri
         if giorno_festivo(data_g):
             continue
 
-        # Se la classe è in stage → hard-lock totale
         if classe_in_stage_giorno(classe.id, data_g):
 
-            # Assicuriamoci che la griglia sia un dict
-            row = griglia[data_g]
-            if isinstance(row, list):
-                row = {i: row[i] for i in range(len(row))}
-                griglia[data_g] = row
-
+            row = griglia[data_g]          # SEMPRE list
             ore_giornaliere = len(row)
 
-            # Riempie la giornata con blocchi STAGE
             for ora in range(ore_giornaliere):
                 row[ora] = {
                     "materia": "STAGE",
                     "materia_id": None,
                     "docente": "",
                     "docente_id": None,
+                    "classe_id": classe.id,
                     "fisso": True,
-                    "tipo": "STAGE"
+                    "tipo": "STAGE",
+                    "origine": "stage",
+                    "blocco": 1
                 }
 
-            # 🔥 Registra occupazione globale nel formato corretto
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE.setdefault("STAGE", {})
-            occ.OCCUPAZIONE_DOCENTI_GLOBALE["STAGE"].setdefault(data_g, {})
+            occ.OCCUPAZIONE_CLASSI_GLOBALE.setdefault(classe.id, {})
+            occ.OCCUPAZIONE_CLASSI_GLOBALE[classe.id].setdefault(data_g, {})
 
             for ora in range(ore_giornaliere):
-                occ.OCCUPAZIONE_DOCENTI_GLOBALE["STAGE"][data_g][ora] = True
+                occ.OCCUPAZIONE_CLASSI_GLOBALE[classe.id][data_g][ora] = True

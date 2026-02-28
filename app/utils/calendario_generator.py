@@ -5,7 +5,7 @@ from .stage_handler import apply_stage
 from app.utils.festivita_handler import apply_festivita
 from .special_days_handler import apply_special_days
 from .fixed_days_handler import apply_fixed_days
-from .ordinary_placement import apply_ordinary, inizializza_occupazione_globale_da_locale
+from .ordinary_placement import apply_ordinary
 
 from app.utils.orario_utils import (
     crea_griglia_settimanale,
@@ -16,7 +16,6 @@ from app.utils.orario_utils import (
 
 from app.utils.utils_scheduler import (
     docente_ok_wrapper,
-    # ottimizza_settimana_classe  # ❌ NON SERVE PIÙ
 )
 
 import app.utils.occupazione as occ
@@ -38,8 +37,10 @@ def genera_calendario_annuale():
         occupazione_docenti
     ) = prepara_classi()
 
-    # 🔹 0bis) INIZIALIZZA OCCUPAZIONE GLOBALE DAI DATI LOCALI (UNA VOLTA SOLA)
-    inizializza_occupazione_globale_da_locale(occupazione_docenti)
+    # 🔹 strutture per validatore globale
+    tutte_le_griglie = {}
+    tutte_le_settimane = {}
+    ore_giornaliere_max = 0
 
     for cid, info in classi_info.items():
 
@@ -48,6 +49,8 @@ def genera_calendario_annuale():
         ore_giornaliere = info["ore_giornaliere"]
         materie_info = info["materie_info"]
         giorni_fissi_classe = info["giorni_fissi"]
+
+        ore_giornaliere_max = max(ore_giornaliere_max, ore_giornaliere)
 
         # Ogni classe deve avere un calendario indipendente
         calendario = []
@@ -109,34 +112,48 @@ def genera_calendario_annuale():
                 calendario
             )
 
-        # 6) SALVA GRIGLIE REALI PER VALIDATORE
+        # 5) SALVA GRIGLIE REALI PER VALIDATORE
         info["griglie"] = griglie
 
-    # 7) CALENDARIO FINALE
+        # 6) ACCUMULA PER VALIDATORE GLOBALE
+        tutte_le_griglie[cid] = griglie
+        tutte_le_settimane[cid] = settimane_classe
+
+        # 7) CALENDARIO FINALE
     calendario_per_classe = salva_calendari(classi_info)
 
-    # 8) DUPLICAZIONE PARALLELE
+    # 8) DUPLICAZIONE PARALLELE (ancora opzionale/commentata)
     from app.utils.associazioni_loader import carica_associazioni_parallele, genera_doc_est_map
     associazioni = carica_associazioni_parallele()
     doc_est_map = genera_doc_est_map(associazioni)
 
     from app.utils.duplica_classi_parallele import duplica_classi_parallele
 
-    #if associazioni:
-        #calendario_per_classe = duplica_classi_parallele(
-        #calendario_per_classe,
-        #associazioni,
-        #doc_est_map
-    #)
+    # if associazioni:
+    #     calendario_per_classe = duplica_classi_parallele(
+    #         calendario_per_classe,
+    #         associazioni,
+    #         doc_est_map
+    #     )
 
-    # 9) VALIDATORE
-    from app.utils.validator import set_validator_cache
+    # 9) VALIDATORE: cache per pagina diagnostica
+    from app.utils.validator import set_validator_cache, valida_motore
     set_validator_cache(calendario_per_classe, classi_info)
 
-    
-    from app.utils.validator import valida_motore
+    # 10) VALIDAZIONE MOTORE SU TUTTE LE CLASSI (UNA ALLA VOLTA)
+    errori = []
+    for cid, info in classi_info.items():
+        griglie_classe = info["griglie"]          # dict[(anno,settimana)] -> {data -> [slot,...]}
+        settimane_classe = info["settimane_classe"]
+        ore_giornaliere = info["ore_giornaliere"]
 
-    errori = valida_motore(griglie, settimane_classe, classe.ore_massime_giornaliere)
+        err_classe = valida_motore(
+            griglie_classe,
+            settimane_classe,
+            ore_giornaliere
+        )
+        nome = info["classe"].nome_classe
+        errori.extend([f"[{nome}] {e}" for e in err_classe])
 
     if errori:
         print("\n=== ERRORI TROVATI ===")
@@ -145,6 +162,4 @@ def genera_calendario_annuale():
     else:
         print("\n=== TUTTO COERENTE ===")
 
-    
-    
     return calendario_per_classe

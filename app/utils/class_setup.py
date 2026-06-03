@@ -139,6 +139,7 @@ def prepara_classi():
                 "id": mc.materia_id,
                 "nome": materie_dict.get(mc.materia_id, "Materia"),
                 "docente_id": mc.docente_id,
+                "ore_annuali": ore_annuali,                 # ⭐ AGGIUNTO
                 "ore_annuali_totali": ore_annuali,
                 "ore_settimanali_teoriche": ore_libere_sett,
                 "ore_fisse": ore_fisse,
@@ -146,6 +147,7 @@ def prepara_classi():
                 "debito_residuo": ore_annuali,
                 "ore_minime_consecutive": mc.ore_minime_consecutive or 1,
             }
+
 
         # ------------------------------------------------------------
         # SALVATAGGIO STRUTTURA CLASSE

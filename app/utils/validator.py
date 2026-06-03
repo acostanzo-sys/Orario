@@ -3,7 +3,7 @@
 from collections import defaultdict
 from app.models import Docente
 from app.utils.validator_html import render_html_report
-from app.utils.utils_scheduler import crea_buco_in_giornata
+#from app.utils.utils_scheduler import crea_buco_in_giornata
 
 
 
@@ -204,52 +204,75 @@ def valida_motore(griglie, settimane_classe, ore_giornaliere):
                         f"[CONFLITTO] Docente {docente_id} in più classi il {data} all'ora {ora} (classi: {list(set(classi_presenti))})"
                     )
 
-    # ------------------------------------------------------------
-    # 3) Nessun giorno con 0 o 1 ore
-    # ------------------------------------------------------------
+    # 3) Giornate vuote ammesse solo dopo l’ultima giornata con ore
     for cid, griglia_classe in griglie.items():
+
+        # Trova l’ultima data in cui la classe ha almeno 1 ora
+        ultime_date = [
+            data for data, ore in griglia_classe.items()
+            if any(slot is not None for slot in ore)
+        ]
+
+        if ultime_date:
+            ultima_data_con_lezioni = max(ultime_date)
+        else:
+            # Classe senza lezioni? Non segnaliamo nulla
+            continue
+
+        # Ora controlliamo le giornate vuote
         for data, ore in griglia_classe.items():
             ore_presenti = sum(1 for slot in ore if slot is not None)
-            if ore_presenti <= 1:
+
+            # Se la giornata è vuota ma è PRIMA dell’ultima giornata con lezioni → errore
+            if ore_presenti == 0 and data < ultima_data_con_lezioni:
                 errori.append(
-                    f"[GIORNO VUOTO] Classe {cid} ha solo {ore_presenti} ore il {data}"
+                    f"[GIORNO VUOTO] Classe {cid} ha un giorno vuoto illegale il {data}"
                 )
 
     # ------------------------------------------------------------
-    # 4) Nessun buco illegale nella classe
+    # 4) Nessun buco interno nella classe
     # ------------------------------------------------------------
     for cid, griglia_classe in griglie.items():
         for data, ore in griglia_classe.items():
-            for ora in range(len(ore)):
-                if ore[ora] is None:
-                    if crea_buco_in_giornata(griglia_classe, data, ora, 1):
-                        errori.append(
-                            f"[BUCO CLASSE] Classe {cid} ha un buco illegale il {data} ora {ora}"
-                        )
+            # Trova gli slot occupati
+            occupati = [i for i, slot in enumerate(ore) if slot is not None]
+
+            if not occupati:
+                continue
+
+            # Se esistono ore occupate, devono essere consecutive
+            if max(occupati) - min(occupati) + 1 != len(occupati):
+                errori.append(
+                    f"[BUCO CLASSE] Classe {cid} ha un buco interno il {data}"
+                )
 
     # ------------------------------------------------------------
     # 5) Nessun buco illegale nel docente
     # ------------------------------------------------------------
-    from app.utils.ordinary_placement import crea_buco_docente
-
     for docente_id, giorni in occ_global.items():
         for data, ore in giorni.items():
-            for ora in ore.keys():
-                if crea_buco_docente(docente_id, data, ora):
-                    errori.append(
-                        f"[BUCO DOCENTE] Docente {docente_id} ha un buco illegale il {data} ora {ora}"
-                    )
+            ore_doc = sorted(ore.keys())
+
+            if not ore_doc:
+                continue
+
+            # Anche il docente non deve avere buchi interni
+            if max(ore_doc) - min(ore_doc) + 1 != len(ore_doc):
+                errori.append(
+                    f"[BUCO DOCENTE] Docente {docente_id} ha un buco interno il {data}"
+                )
 
     # ------------------------------------------------------------
-    # 6) Nessun docente oltre 3 ore nella stessa classe
+    # 6) Nessun docente oltre 2 ore nella stessa classe
     # ------------------------------------------------------------
-    from app.utils.ordinary_placement import count_ore_docente_in_classe
-
     for cid, griglia_classe in griglie.items():
         for data, ore in griglia_classe.items():
             for docente_id in occ_global.keys():
-                ore_doc = count_ore_docente_in_classe(docente_id, griglia_classe, data, ore_giornaliere)
-                if ore_doc > 3:
+                ore_doc = sum(
+                    1 for slot in ore
+                    if isinstance(slot, dict) and slot.get("docente_id") == docente_id
+                )
+                if ore_doc > 2:
                     errori.append(
                         f"[TROPPE ORE] Docente {docente_id} ha {ore_doc} ore nella classe {cid} il {data}"
                     )

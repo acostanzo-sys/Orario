@@ -1,10 +1,11 @@
 # app/utils/fixed_days_handler.py
 
-from app.utils.orario_utils import slot_libero, piazza_blocco, normalizza_giorno_it
+from app.utils.orario_utils import piazza_blocco, normalizza_giorno_it
 from app.models import Docente
+import app.utils.occupazione as occ
+from app.utils.utils_scheduler import docente_ok_wrapper  # ✔ usiamo il wrapper unico
 
 print(">>> FIXED DAYS HANDLER CARICATO")
-print(">>> LOADING fixed_days_handler.py FROM:", __file__)
 
 
 def apply_fixed_days(
@@ -17,17 +18,6 @@ def apply_fixed_days(
     giorni_fissi_classe,
     docente_ok
 ):
-    """
-    GIORNI FISSI (hard lock):
-    - piazza SOLO le ore richieste
-    - inserisce SEMPRE il docente associato
-    - rispetta vincoli docente (docente_ok)
-    - aggiorna occupazione globale tramite piazza_blocco
-    - marca gli slot come fissi
-    - NON invade giorni speciali
-    - NON invade STAGE
-    """
-
     if not giorni_fissi_classe:
         return
 
@@ -41,8 +31,8 @@ def apply_fixed_days(
             continue
 
         info_m = materie_info[materia_id]
-
         docente = Docente.query.get(docente_id)
+
         if not docente:
             print(f"[ATTENZIONE] Giorno fisso senza docente valido: materia {materia_id}")
             continue
@@ -53,16 +43,28 @@ def apply_fixed_days(
 
             data_g = g["data"]
             giorno_it = g["giorno_it"]
+            row = griglia[data_g]
 
-            # NON invadere giorni speciali
+            # Non invadere giorni speciali dichiarati per quella materia
             if "giorni_speciali" in info_m and data_g in info_m["giorni_speciali"]:
                 continue
 
-            row = griglia[data_g]   # 🔥 SEMPRE LISTA
+            # Non invadere STAGE
+            if any(slot and isinstance(slot, dict) and slot.get("tipo") == "STAGE"
+                   for slot in row):
+                continue
 
-            # NON invadere STAGE
+            # Non invadere FESTA
+            if any(slot and isinstance(slot, dict) and slot.get("tipo") == "FESTA"
+                   for slot in row):
+                continue
+
+            # Non invadere giorni già completamente occupati da FISSO/SPECIALE
+            # (se c'è già qualcosa di fisso/speciale, saltiamo questo giorno per questa materia)
             if any(
-                slot and isinstance(slot, dict) and slot.get("materia") == "STAGE"
+                slot and isinstance(slot, dict) and (
+                    slot.get("fisso") or slot.get("tipo") in ("FISSO", "SPECIALE")
+                )
                 for slot in row
             ):
                 continue
@@ -70,28 +72,40 @@ def apply_fixed_days(
             ore_giornaliere = len(row)
             ore_da_piazzare = min(ore_richieste, info_m["debito_residuo"], ore_giornaliere)
 
-            # Trova slot liberi
-            slot_liberi = [i for i in range(ore_giornaliere) if row[i] is None]
-            if len(slot_liberi) < ore_da_piazzare:
+            if ore_da_piazzare <= 0:
                 continue
 
-            ore_piazzate = 0
-
-            for i in slot_liberi:
-                if ore_piazzate >= ore_da_piazzare:
-                    break
-
-                # Disponibilità docente
-                if docente_ok and not docente_ok(docente_id, data_g, giorno_it, i, 1):
+            # Cerca il primo blocco CONSECUTIVO libero di ore_da_piazzare slot
+            start = None
+            for i in range(ore_giornaliere - ore_da_piazzare + 1):
+                # Tutti gli slot del blocco devono essere liberi
+                if not all(row[i + j] is None for j in range(ore_da_piazzare)):
                     continue
 
-                print(">>> FISSO PIAZZA:", docente_id, data_g, i, 1)
+                # Tutti gli slot devono essere compatibili col docente (wrapper globale)
+                tutti_ok = True
+                for j in range(ore_da_piazzare):
+                    h = i + j
+                    if not docente_ok_wrapper(docente_id, data_g, h, giorno_it, 1):
+                        tutti_ok = False
+                        break
 
-                # Piazza 1 ora (aggiorna globale)
+                if tutti_ok:
+                    start = i
+                    break
+
+            if start is None:
+                print(f"[WARN] Nessun blocco consecutivo per fisso materia {materia_id} il {data_g}")
+                continue
+
+            # Piazza le ore consecutive a partire da start
+            for j in range(ore_da_piazzare):
+                h = start + j
+
                 piazza_blocco(
                     griglia,
                     data_g,
-                    i,
+                    h,
                     1,
                     materie_dict[materia_id],
                     docente.nome_docente if docente else "",
@@ -103,10 +117,10 @@ def apply_fixed_days(
                     origine="fisso"
                 )
 
-                # Marca come slot fisso
-                griglia[data_g][i]["fisso"] = True
+                occ.occupa(docente_id, classe.id, data_g, h)
+                griglia[data_g][h]["fisso"] = True
+                griglia[data_g][h]["origine"] = "fisso"
+                griglia[data_g][h]["tipo"] = "FISSO"
 
-                # Aggiorna contatori
-                info_m["debito_residuo"] -= 1
-                info_m["ore_assegnate"] += 1
-                ore_piazzate += 1
+            info_m["debito_residuo"] -= ore_da_piazzare
+            info_m["ore_assegnate"] += ore_da_piazzare

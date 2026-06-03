@@ -7,46 +7,57 @@ from app.models import Docente
 print(">>> LOADING utils_scheduler.py FROM:", __file__)
 
 
-def docente_ok_wrapper(docente_id, data_g, giorno_it, start, blocco):
-    occ_glob = occ.OCCUPAZIONE_DOCENTI_GLOBALE
+def docente_ok_wrapper(docente_id, data_g, ora, giorno_it, blocco):
+    """
+    Controlla se il docente è disponibile per un blocco di ore consecutive.
+    Compatibile con il nuovo motore ordinario.
+    """
 
-    print(">>> CHECK:", docente_id, data_g, "OCCUPATO:",
-          occ_glob.get(docente_id, {}).get(data_g, {}))
-
+    # Normalizza i parametri
     try:
-        docente_id_norm = int(docente_id) if docente_id is not None else None
+        ora = int(ora)
+        blocco = int(blocco)
     except Exception:
         return False
 
-    docente = Docente.query.get(docente_id_norm) if docente_id_norm else None
-
-    # DOC EST sempre ok
-    if docente and docente.nome_docente == "DOC EST":
+    # Se docente_id è None → DOC EST → sempre ok
+    if docente_id is None:
         return True
 
-    # id non valido
-    if docente_id_norm and not docente:
+    # Normalizza docente_id
+    try:
+        docente_id_norm = int(docente_id)
+    except Exception:
         return False
 
-    # nessun docente → nessun vincolo
-    if docente_id_norm is None:
+    # Recupera docente dal DB
+    docente = Docente.query.get(docente_id_norm)
+    if not docente:
+        return False
+
+    # DOC EST (virtuale) → sempre ok
+    if docente.nome_docente == "DOC EST":
         return True
 
-    # 1) Controllo sovrapposizioni globali
+    # OCCUPAZIONE GLOBALE
+    occ_glob = occ.OCCUPAZIONE_DOCENTI_GLOBALE
     occ_doc = occ_glob.get(docente_id_norm, {})
     slots_occupati = occ_doc.get(data_g, {})
 
-    for i in range(start, start + blocco):
+    # Debug opzionale
+    print(">>> CHECK:", docente_id, data_g, "OCCUPATO:", slots_occupati)
+
+    # 1) Controllo sovrapposizioni globali
+    for i in range(ora, ora + blocco):
         if i in slots_occupati:
             return False
 
-    # 2) Controllo disponibilità oraria (vincoli docente)
-    for i in range(start, start + blocco):
+    # 2) Controllo disponibilità oraria del docente
+    for i in range(ora, ora + blocco):
         if not docente_disponibile(docente_id_norm, giorno_it, i):
             return False
 
     return True
-
 
 # ============================================================
 # 2) EVITA BUCHI

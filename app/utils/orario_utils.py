@@ -159,9 +159,13 @@ def classe_in_stage_giorno(classe_id, data):
 # GIORNI SPECIALI
 # ===============================
 
+from sqlalchemy import func
+from app.models import GiornoSpeciale
+
 def giorno_speciale_classe(classe_id, data_giorno):
-    return GiornoSpeciale.query.filter_by(
-        classe_id=classe_id, data=data_giorno
+    return GiornoSpeciale.query.filter(
+        GiornoSpeciale.classe_id == classe_id,
+        func.date(GiornoSpeciale.data) == data_giorno
     ).first()
 
 
@@ -276,8 +280,9 @@ def costruisci_settimana(griglia, giorni_settimana, ore_giornaliere, calendario)
     - docente_id
     - fisso
     - blocco (1 ora per slot, il validatore ricostruisce)
+    Gli slot SPECIALE_VUOTO (buchi intenzionali nei giorni speciali)
+    vengono convertiti in slot vuoti normali.
     """
-
     for g in giorni_settimana:
         data_g = g["data"]
         giorno_it = g["giorno_it"]
@@ -288,7 +293,7 @@ def costruisci_settimana(griglia, giorni_settimana, ore_giornaliere, calendario)
             slot = griglia[data_g][idx]
             ora = orario_slot(idx)
 
-            if slot is None:
+            if slot is None or slot.get("tipo") == "SPECIALE_VUOTO":
                 lezioni.append({
                     "ora": ora,
                     "materia": "",
@@ -304,7 +309,7 @@ def costruisci_settimana(griglia, giorni_settimana, ore_giornaliere, calendario)
                     "docente": slot.get("docente", ""),
                     "docente_id": slot.get("docente_id"),
                     "fisso": slot.get("fisso", False),
-                    "blocco": 1,  # ogni slot è 1 ora, i blocchi sono ricostruibili
+                    "blocco": 1,
                 })
 
         calendario.append({
@@ -312,7 +317,6 @@ def costruisci_settimana(griglia, giorni_settimana, ore_giornaliere, calendario)
             "giorno_settimana": giorno_it,
             "lezioni": lezioni,
         })
-
 
 # ===============================
 # SALVATAGGIO + SINCRONIZZAZIONE
